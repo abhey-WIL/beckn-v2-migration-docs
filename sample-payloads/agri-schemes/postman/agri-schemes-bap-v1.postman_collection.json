@@ -1,0 +1,244 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Agri Schemes — Bharat OneGov (V1)",
+    "description": "V1 Beckn flow for agri-schemes government benefits.\nFlow: search → confirm → status\n\nBefore running:\n1. Set bap_id, bap_uri, bpp_id, bpp_uri to your registered participant values.\n2. Run 'search' first — transaction_id is auto-generated and saved.\n3. Fill provider_id and scheme_item_id from the on_search response before running 'confirm'.\n4. Fill booking_order_id from the on_confirm response before running 'status'.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "search",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Generate and lock a transaction_id for the full flow",
+              "if (!pm.collectionVariables.get('transaction_id') || pm.collectionVariables.get('transaction_id') === '<transaction_id>') {",
+              "    pm.collectionVariables.set('transaction_id', pm.variables.replaceIn('{{$randomUUID}}'));",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Confirm request was accepted",
+              "pm.test('Status is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"context\": {\n    \"domain\": \"agri-schemes\",\n    \"action\": \"discover\",\n    \"bap_id\": \"{{bap_id}}\",\n    \"bap_uri\": \"{{bap_uri}}\",\n    \"transaction_id\": \"{{transaction_id}}\",\n    \"message_id\": \"{{$guid}}\",\n    \"version\": \"{{version}}\",\n    \"ttl\": \"PT30S\",\n    \"timestamp\": \"{{$isoTimestamp}}\"\n  },\n  \"message\": {\n    \"intent\": {\n      \"item\": {\n        \"descriptor\": {\n          \"name\": \"farmer {{query_keywords}}\"\n        }\n      },\n      \"tags\": [\n        {\n          \"descriptor\": {\n            \"name\": \"languages\"\n          },\n          \"list\": [\n            {\n              \"value\": \"{{preferred_language}}\"\n            }\n          ]\n        }\n      ]\n    }\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{bap_adapter_url}}/discover",
+          "host": ["{{bap_adapter_url}}"],
+          "path": ["discover"]
+        },
+        "description": "Searches for government schemes matching a keyword and language filter.\n\nAfter on_search callback arrives, note:\n- provider_id (e.g. PM00006C)\n- scheme_item_id (e.g. SH00068Q)\n- bpp_id and bpp_uri from the response context"
+      },
+      "response": []
+    },
+    {
+      "name": "confirm",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Generate a stable fulfillment_id for this confirm request",
+              "pm.collectionVariables.set('fulfillment_id', pm.variables.replaceIn('{{$randomUUID}}'));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "// Extract order_id from on_confirm callback if synchronously returned",
+              "try {",
+              "    var json = pm.response.json();",
+              "    if (json.message && json.message.order && json.message.order.id) {",
+              "        pm.collectionVariables.set('booking_order_id', json.message.order.id);",
+              "        console.log('Saved booking_order_id: ' + json.message.order.id);",
+              "    }",
+              "} catch(e) {}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"context\": {\n    \"domain\": \"agri-schemes\",\n    \"action\": \"confirm\",\n    \"bap_id\": \"{{bap_id}}\",\n    \"bap_uri\": \"{{bap_uri}}\",\n    \"bpp_id\": \"{{bpp_id}}\",\n    \"bpp_uri\": \"{{bpp_uri}}\",\n    \"transaction_id\": \"{{transaction_id}}\",\n    \"message_id\": \"{{$guid}}\",\n    \"version\": \"{{version}}\",\n    \"ttl\": \"PT30S\",\n    \"timestamp\": \"{{$isoTimestamp}}\"\n  },\n  \"message\": {\n    \"order\": {\n      \"provider\": {\n        \"id\": \"{{provider_id}}\"\n      },\n      \"items\": [\n        {\n          \"id\": \"{{scheme_item_id}}\"\n        }\n      ]\n    },\n    \"fulfillments\": [\n      {\n        \"id\": \"{{fulfillment_id}}\",\n        \"type\": \"Book a Haqdarshak\",\n        \"customer\": {\n          \"person\": {\n            \"name\": \"{{applicant_name}}\",\n            \"gender\": \"{{applicant_gender}}\",\n            \"dob\": \"{{applicant_dob}}\"\n          },\n          \"contact\": {\n            \"phone\": \"{{applicant_phone}}\"\n          }\n        },\n        \"stops\": [\n          {\n            \"location\": {\n              \"gps\": \"{{applicant_lat}},{{applicant_long}}\"\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{bap_adapter_url}}/confirm",
+          "host": ["{{bap_adapter_url}}"],
+          "path": ["confirm"]
+        },
+        "description": "Confirms the scheme application with applicant details and location.\n\nfulfillment_id is auto-generated per request.\n\nAfter on_confirm callback arrives:\n- Copy the contract/order ID into the 'booking_order_id' collection variable before running 'status'."
+      },
+      "response": []
+    },
+    {
+      "name": "status",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"context\": {\n    \"domain\": \"agri-schemes\",\n    \"action\": \"status\",\n    \"bap_id\": \"{{bap_id}}\",\n    \"bap_uri\": \"{{bap_uri}}\",\n    \"bpp_id\": \"{{bpp_id}}\",\n    \"bpp_uri\": \"{{bpp_uri}}\",\n    \"transaction_id\": \"{{transaction_id}}\",\n    \"message_id\": \"{{$guid}}\",\n    \"version\": \"{{version}}\",\n    \"ttl\": \"PT30S\",\n    \"timestamp\": \"{{$isoTimestamp}}\"\n  },\n  \"message\": {\n    \"order_id\": \"{{booking_order_id}}\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{bap_adapter_url}}/status",
+          "host": ["{{bap_adapter_url}}"],
+          "path": ["status"]
+        },
+        "description": "Fetches the current status of a confirmed scheme application.\n\nbooking_order_id must be set from the on_confirm callback before running this request."
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "version",
+      "value": "1.0.0"
+    },
+    {
+      "key": "bap_adapter_url",
+      "value": "http://localhost:8081/bap/caller"
+    },
+    {
+      "key": "bap_id",
+      "value": "<bap_id>"
+    },
+    {
+      "key": "bap_uri",
+      "value": "<bap_uri>"
+    },
+    {
+      "key": "bpp_id",
+      "value": "<bpp_id>"
+    },
+    {
+      "key": "bpp_uri",
+      "value": "<bpp_uri>"
+    },
+    {
+      "key": "transaction_id",
+      "value": "<transaction_id>"
+    },
+    {
+      "key": "fulfillment_id",
+      "value": ""
+    },
+    {
+      "key": "query_keywords",
+      "value": "subsidy solar pump"
+    },
+    {
+      "key": "preferred_language",
+      "value": "Hindi"
+    },
+    {
+      "key": "provider_id",
+      "value": "<provider_id from on_search>"
+    },
+    {
+      "key": "scheme_item_id",
+      "value": "<scheme_item_id from on_search>"
+    },
+    {
+      "key": "applicant_name",
+      "value": "<applicant_full_name>"
+    },
+    {
+      "key": "applicant_gender",
+      "value": "<Male|Female|Other>"
+    },
+    {
+      "key": "applicant_dob",
+      "value": "<yyyy-mm-dd>"
+    },
+    {
+      "key": "applicant_phone",
+      "value": "<10-digit phone>"
+    },
+    {
+      "key": "applicant_lat",
+      "value": "<latitude>"
+    },
+    {
+      "key": "applicant_long",
+      "value": "<longitude>"
+    },
+    {
+      "key": "booking_order_id",
+      "value": "<order_id from on_confirm>"
+    }
+  ]
+}
