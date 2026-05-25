@@ -1,7 +1,7 @@
 {
   "context": {
     "domain": "agri-schemes",
-    "action": "on_discover",
+    "action": "catalog/publish",
     "bap_id": "dpi-uat-bap",
     "bap_uri": "https://adapter.mohaneesh.onix.dpi.monster/bap/receiver/",
     "transaction_id": "88786aa3-58a7-4808-98c4-86df6e282c91",
