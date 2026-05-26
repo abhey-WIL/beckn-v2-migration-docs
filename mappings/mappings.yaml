@@ -673,6 +673,8 @@ mappings:
               {
                 "id": "catalog-" & $provider.id,
                 "descriptor": { "name": $catalog.descriptor.name ? $catalog.descriptor.name : $provider.descriptor.name },
+                "bppId": $ctx.bpp_id,
+                "bppUri": $ctx.bpp_uri,
                 "provider": $merge([
                   {
                     "id": $provider.id,
