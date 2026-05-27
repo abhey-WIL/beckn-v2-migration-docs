@@ -262,27 +262,25 @@ mappings:
 
               {
                 "id": "catalog-" & $provider.id,
-                "descriptor": { "name": $catalog.descriptor.name },
+                "descriptor": { "name": $catalog.descriptor.name ? $catalog.descriptor.name : $provider.descriptor.name },
                 "provider": $merge([
                   {
                     "id": $provider.id,
                     "descriptor": $provider.descriptor
                   },
                   $availableAt ? { "availableAt": $availableAt } : {},
-                  {
-                    "providerAttributes": $merge([
-                      {
-                        "@context": $providerCtx,
-                        "@type": "Attributes"
-                      },
-                      $provider.locations ? { "availableInStates": [$map($provider.locations, function($loc) {{
+                  $provider.locations ? {
+                    "providerAttributes": {
+                      "@context": $providerCtx,
+                      "@type": "Attributes",
+                      "availableInStates": [$map($provider.locations, function($loc) {{
                         "id": $loc.id,
                         "name": $loc.state.name,
                         "code": $loc.state.code,
                         "country": $loc.country.code
-                      }})] } : {}
-                    ])
-                  }
+                      }})]
+                    }
+                  } : {}
                 ]),
                 "resources": $resources,
                 "offers": $offers
@@ -674,27 +672,27 @@ mappings:
 
               {
                 "id": "catalog-" & $provider.id,
-                "descriptor": { "name": $catalog.descriptor.name },
+                "descriptor": { "name": $catalog.descriptor.name ? $catalog.descriptor.name : $provider.descriptor.name },
+                "bppId": $ctx.bpp_id,
+                "bppUri": $ctx.bpp_uri,
                 "provider": $merge([
                   {
                     "id": $provider.id,
                     "descriptor": $provider.descriptor
                   },
                   $availableAt ? { "availableAt": $availableAt } : {},
-                  {
-                    "providerAttributes": $merge([
-                      {
-                        "@context": $providerCtx,
-                        "@type": "Attributes"
-                      },
-                      $provider.locations ? { "availableInStates": [$map($provider.locations, function($loc) {{
+                  $provider.locations ? {
+                    "providerAttributes": {
+                      "@context": $providerCtx,
+                      "@type": "Attributes",
+                      "availableInStates": [$map($provider.locations, function($loc) {{
                         "id": $loc.id,
                         "name": $loc.state.name,
                         "code": $loc.state.code,
                         "country": $loc.country.code
-                      }})] } : {}
-                    ])
-                  }
+                      }})]
+                    }
+                  } : {}
                 ]),
                 "resources": $resources,
                 "offers": $offers
