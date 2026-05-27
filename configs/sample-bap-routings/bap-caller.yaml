@@ -8,6 +8,6 @@ routingRules:
   - version: "2.0.0"
     targetType: "url"
     target:
-      url: "https://34.93.141.21.sslip.io/beckn"
+      url: "https://discovr.onix.fynd.engineering/beckn"
     endpoints:
       - discover
