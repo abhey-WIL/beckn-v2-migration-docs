@@ -39,7 +39,7 @@
 					"response": []
 				},
 				{
-					"name": "publsih",
+					"name": "publish",
 					"request": {
 						"auth": {
 							"type": "noauth"
@@ -56,12 +56,12 @@
 							}
 						},
 						"url": {
-							"raw": "{{bpp_adapter_url}}/publsih",
+							"raw": "{{bpp_adapter_url}}/publish",
 							"host": [
 								"{{bpp_adapter_url}}"
 							],
 							"path": [
-								"publsih"
+								"publish"
 							]
 						}
 					},
@@ -123,12 +123,12 @@
 							}
 						},
 						"url": {
-							"raw": "{{bpp_adapter_url}}/publsih",
+							"raw": "{{bpp_adapter_url}}/publish",
 							"host": [
 								"{{bpp_adapter_url}}"
 							],
 							"path": [
-								"publsih"
+								"publish"
 							]
 						}
 					},
