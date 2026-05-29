@@ -96,7 +96,7 @@ modules:
         payloadTransformer:
           id: reqmapper
           config:
-            role: bap
+            role: bpp
             mappingsFile: /app/config/mappings.yaml
         middleware:
           - id: reqpreprocessor
@@ -168,7 +168,7 @@ modules:
         payloadTransformer:
           id: reqmapper
           config:
-            role: bap
+            role: bpp
             mappingsFile: /app/config/mappings.yaml
         middleware:
           - id: reqpreprocessor
