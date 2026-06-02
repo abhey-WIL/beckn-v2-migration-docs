@@ -120,7 +120,7 @@ mappings:
             $rateable          := $rTags[code = "rateable"][0].value;
             $rating            := $rTags[code = "rating"][0].value;
             $duration          := $rTags[code = "duration"][0].value;
-            $knownRTagCodes    := ["categoryId", "categoryIds", "locationIds", "fulfillmentIds", "targetBeneficiaryType", "fundingModel", "benefitFor", "benefitValue", "shortBenefit", "requiredDoc", "economicEligibility", "demographicEligibility", "documentsListText", "eligibilityText", "rateable", "rating", "duration"];
+            $knownRTagCodes    := ["categoryId", "categoryIds", "locationIds", "fulfillmentIds", "targetBeneficiaryType", "fundingModel", "benefitFor", "benefitValue", "shortBenefit", "requiredDoc", "economicEligibility", "demographicEligibility", "documentsListText", "eligibilityText", "rateable", "rating", "duration", "providerLocation", "providerRateable", "providerRating"];
             $unknownEntries    := $filter($rTags, function($e) { $not($knownRTagCodes[$ = $e.code]) });
             $unknownCodes      := $distinct($unknownEntries.code);
             $unknownTagsOut    := $boolean($count($unknownCodes)) ? [$map($unknownCodes, function($code) {{ "display": true, "descriptor": { "code": $code, "name": $code }, "list": [$map($unknownEntries[code = $code], function($e) { $merge([$exists($e.itemCode) ? { "descriptor": { "code": $e.itemCode, "name": $e.itemName ? $e.itemName : $e.itemCode } } : {}, $exists($e.value) ? { "value": $e.value } : {}, { "display": true }]) })] }})] : [];
@@ -276,6 +276,9 @@ mappings:
             ])
           )})] : null;
 
+          $providerLocEntries    := $resources[0].resourceAttributes.entitlementIds[code = "providerLocation"];
+          $providerRateableEntry := $resources[0].resourceAttributes.entitlementIds[code = "providerRateable"][0];
+          $providerRatingEntry   := $resources[0].resourceAttributes.entitlementIds[code = "providerRating"][0];
           $merge([
             {
               "id": $provider.id,
@@ -289,13 +292,21 @@ mappings:
               "id": $c.value,
               "descriptor": { "code": $c.categoryCode, "name": $c.categoryName }
             }})] } : {},
-            $provider.providerAttributes.availableInStates ? { "locations": [$map($provider.providerAttributes.availableInStates, function($s) {{
-              "id": $s.id,
-              "state": { "code": $s.code, "name": $s.name },
-              "country": { "code": $s.country, "name": "India" }
-            }})] } : {},
-            $provider.providerAttributes.providerRateable ? { "rateable": $boolean($provider.providerAttributes.providerRateable) } : {},
-            $exists($provider.providerAttributes.providerRating) ? { "rating": $provider.providerAttributes.providerRating } : {}
+            ($provider.providerAttributes.availableInStates or $boolean($count($providerLocEntries))) ? { "locations":
+              $provider.providerAttributes.availableInStates ?
+                [$map($provider.providerAttributes.availableInStates, function($s) {{
+                  "id": $s.id,
+                  "state": { "code": $s.code, "name": $s.name },
+                  "country": { "code": $s.country, "name": "India" }
+                }})] :
+                [$map($providerLocEntries, function($e) {{
+                  "id": $e.locationId,
+                  "state": { "code": $e.locationCode, "name": $e.locationName },
+                  "country": { "code": $e.country, "name": "India" }
+                }})]
+            } : {},
+            ($provider.providerAttributes.providerRateable or $providerRateableEntry) ? { "rateable": $boolean($provider.providerAttributes.providerRateable ? $provider.providerAttributes.providerRateable : $providerRateableEntry.value) } : {},
+            ($exists($provider.providerAttributes.providerRating) or $exists($providerRatingEntry)) ? { "rating": $exists($provider.providerAttributes.providerRating) ? $provider.providerAttributes.providerRating : $providerRatingEntry.value } : {}
           ])
         )};
 
@@ -347,6 +358,11 @@ mappings:
             "ttl": $ctx.ttl
           },
           "message": {
+            "publishDirectives": [$map($catalog.providers, function($provider) {{
+              "catalogId": $catalog.id ? $catalog.id : "catalog-" & $provider.id,
+              "visibleTo": [$ctx.domain],
+              "catalogType": "REGULAR"
+            }})],
             "catalogs": [$map($catalog.providers, function($provider) {(
               $resources := [$map($provider.items, function($item) {(
                 $tags     := $item.tags;
@@ -394,7 +410,20 @@ mappings:
                   $val := $e.value ? $replace($e.value, /^= /, "") : $e.value;
                   $merge([{ "code": "demographicEligibility", "criterion": $e.descriptor.name, "value": $val }, $e.descriptor.code ? { "criterionCode": $e.descriptor.code } : {}])
                 )})] : [];
-                $itemTags := $reduce([$scalarTags, $tbtTags, $fmTags, $benTags, $sbenTags, $locationTags, $fulfillmentTags, $docTags, $econTags, $demoTags, $unknownTagEntries], $append);
+                $providerLocationTags := $append(
+                  $provider.locations ? [$map($provider.locations, function($loc) {{
+                    "code": "providerLocation",
+                    "locationId": $loc.id,
+                    "locationCode": $loc.state.code,
+                    "locationName": $loc.state.name,
+                    "country": $loc.country.code
+                  }})] : [],
+                  $append(
+                    $provider.rateable ? [{ "code": "providerRateable", "value": $string($provider.rateable) }] : [],
+                    $exists($provider.rating) ? [{ "code": "providerRating", "value": $provider.rating }] : []
+                  )
+                );
+                $itemTags := $reduce([$scalarTags, $tbtTags, $fmTags, $benTags, $sbenTags, $locationTags, $fulfillmentTags, $docTags, $econTags, $demoTags, $unknownTagEntries, $providerLocationTags], $append);
 
                 {
                   "id": $item.id,
@@ -515,7 +544,7 @@ mappings:
               ) : null;
 
               {
-                "id": "catalog-" & $provider.id,
+                "id": $catalog.id ? $catalog.id : "catalog-" & $provider.id,
                 "descriptor": { "name": $catalog.descriptor.name ? $catalog.descriptor.name : $provider.descriptor.name },
                 "bppId": $ctx.bpp_id,
                 "bppUri": $ctx.bpp_uri,
