@@ -8,12 +8,46 @@ mappings:
         $lang    := $msg.intent.tags[descriptor.name = "languages"].list[0].value;
         $fulType := $msg.intent.fulfillment.type;
         $gps     := $msg.intent.fulfillment.stops[0].location.gps;
-        $addr    := $msg.intent.fulfillment.stops[0].location.address;
+        $addr    := $type($msg.intent.fulfillment.stops[0].location.address) = "string" ? $msg.intent.fulfillment.stops[0].location.address : $msg.intent.fulfillment.stops[0].location.address.locality;
 
-        $langExpr := $lang    ? "$.catalogs[*].resources[*] ? (@.resourceAttributes.entitlementIds[?(@.code=='language')].value == '" & $lang & "')" : null;
+        $priceMin := $msg.intent.item.price.minimum_value;
+        $priceMax := $msg.intent.item.price.maximum_value;
+        $priceCurrency := $msg.intent.item.price.currency;
+        $priceConditions := $filter([
+          $priceCurrency ? "@.considerationAttributes.currency == '" & $priceCurrency & "'" : null,
+          $priceMin ? "@.considerationAttributes.value >= " & $number($priceMin) : null,
+          $priceMax ? "@.considerationAttributes.value <= " & $number($priceMax) : null
+        ], function($c) { $c != null });
+        $priceExpr := ($priceMin or $priceMax or $priceCurrency) ? "$.catalogs[*].offers[*].considerations[*] ? (" & $join($priceConditions, " && ") & ")" : null;
+
+        $state := $msg.intent.fulfillment.stops[0].location.state;
+        $stateExpr := $state ? "$.catalogs[*].provider.availableAt[*] ? (@.address.addressRegion == '" & $state & "')" : null;
+
+        $gender := $msg.intent.citizen.person.gender;
+        $beneficiaryType := $msg.intent.beneficiary.type;
+        $occupationStatus := $msg.intent.citizen.economic.occupation_status;
+        $govSchemeState := $msg.intent.citizen.address.state;
+        $areaType := $msg.intent.citizen.address.area_type;
+        $fundingModel := $msg.intent.scheme.funding_model;
+        
+        $govSchemeConditions := $filter([
+          $gender ? "(@.code=='demographicEligibility' && @.criterion=='Gender' && @.value=='" & $gender & "')" : null,
+          $beneficiaryType ? "(@.code=='targetBeneficiaryType' && @.value=='" & $beneficiaryType & "')" : null,
+          $occupationStatus ? "(@.code=='economicEligibility' && @.value=='" & $occupationStatus & "')" : null,
+          $areaType ? "(@.code=='demographicEligibility' && @.criterion=='Type of area (Rural or Urban)' && @.value=='" & $areaType & "')" : null,
+          $fundingModel ? "(@.code=='fundingModel' && @.value=='" & $fundingModel & "')" : null
+        ], function($c) { $c != null });
+        
+        $govSchemeExpr := $count($govSchemeConditions) > 0 ? "$.catalogs[*].resources[*].resourceAttributes.entitlementIds ? (" & $join($govSchemeConditions, " || ") & ")" : null;
+        $govStateExpr := $govSchemeState ? "$.catalogs[*].provider.providerAttributes.availableInStates ? (@.name == '" & $govSchemeState & "')" : null;
+
+        $langExpr := $lang    ? "$.catalogs[*].resources[*] ? (@.resourceAttributes.entitlementIds ? (@.code=='language' && @.value == '" & $lang & "'))" : null;
         $fulExpr  := $fulType ? "$.catalogs[*].offers[*] ? (@.offerAttributes.fulfillmentType == '" & $fulType & "')" : null;
         $addrExpr := $addr    ? "$.catalogs[*].provider.availableAt[*] ? (@.address.addressLocality == '" & $addr & "')" : null;
-        $expression := $langExpr ? $langExpr : ($fulExpr ? $fulExpr : $addrExpr);
+        
+        $allFilters := [$langExpr, $fulExpr, $addrExpr, $priceExpr, $stateExpr, $govSchemeExpr, $govStateExpr];
+        $validFilters := $filter($allFilters, function($f) { $f != null });
+        $expression := $count($validFilters) > 0 ? $join($validFilters, " && ") : null;
 
         $gpsValid := $gps ? $boolean($match($gps, /^-?\d+\.?\d*\s*,\s*-?\d+\.?\d*$/)) : false;
         $gpsParts := $gpsValid ? $split($gps, ",") : null;
