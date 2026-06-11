@@ -20,7 +20,7 @@ mappings:
         ], function($c) { $c != null });
         $priceExpr := ($priceMin or $priceMax or $priceCurrency) ? "$.catalogs[*].offers[*].considerations[*] ? (" & $join($priceConditions, " && ") & ")" : null;
 
-        $state := $msg.intent.fulfillment.stops[0].location.state;
+        $state := $exists($msg.intent.fulfillment.stops) ? $msg.intent.fulfillment.stops[0].location.state : null;
         $stateExpr := $state ? "$.catalogs[*].provider.availableAt[*] ? (@.address.addressRegion == '" & $state & "')" : null;
 
         $gender := $msg.intent.citizen.person.gender;
