@@ -155,10 +155,13 @@ mappings:
             $rateable          := $rTags[code = "rateable"][0].value;
             $rating            := $rTags[code = "rating"][0].value;
             $duration          := $rTags[code = "duration"][0].value;
-            $knownRTagCodes    := ["categoryId", "categoryIds", "locationIds", "fulfillmentIds", "targetBeneficiaryType", "fundingModel", "benefitFor", "benefitValue", "shortBenefit", "requiredDoc", "economicEligibility", "demographicEligibility", "socialEligibility", "documentsListText", "eligibilityText", "rateable", "rating", "duration", "providerLocation", "providerRateable", "providerRating"];
+            $minQty            := $rTags[code = "minimumQuantity"][0];
+            $knownRTagCodes    := ["categoryId", "categoryIds", "locationIds", "fulfillmentIds", "targetBeneficiaryType", "fundingModel", "benefitFor", "benefitValue", "shortBenefit", "requiredDoc", "economicEligibility", "demographicEligibility", "socialEligibility", "documentsListText", "eligibilityText", "rateable", "rating", "duration", "minimumQuantity", "providerLocation", "providerRateable", "providerRating"];
             $unknownEntries    := $filter($rTags, function($e) { $not($knownRTagCodes[$ = $e.code]) });
             $unknownCodes      := $distinct($unknownEntries.code);
             $unknownTagsOut    := $boolean($count($unknownCodes)) ? [$map($unknownCodes, function($code) {{ "display": true, "descriptor": { "code": $code, "name": $code }, "list": [$map($unknownEntries[code = $code], function($e) { $merge([$exists($e.itemCode) ? { "descriptor": { "code": $e.itemCode, "name": $e.itemName ? $e.itemName : $e.itemCode } } : {}, $exists($e.value) ? { "value": $e.value } : {}, { "display": true }]) })] }})] : [];
+            $offerFlatTags     := $offer ? $offer.offerAttributes.itemTags : [];
+            $v1FlatTags        := $boolean($count($offerFlatTags)) ? $map($offerFlatTags, function($t) { $merge([{ "name": $t.code }, $exists($t.value) ? { "value": $t.value } : {}]) }) : [];
 
             $allTags := [
               $boolean($count($tbts)) ? {
@@ -261,6 +264,7 @@ mappings:
                     $ca.minimumValue ? { "minimum_value": $string($ca.minimumValue) } : {},
                     $ca.maximumValue ? { "maximum_value": $string($ca.maximumValue) } : {},
                     $ca.updatedAt ? { "updated_at": $ca.updatedAt } : {},
+                    $ca.unit ? { "unit": $ca.unit } : {},
                     $ca.unit ? { "tags": [{ "name": "unit", "value": $ca.unit }] } : {}
                   ])
                 ) : {},
@@ -271,7 +275,14 @@ mappings:
               $boolean($count($catVals)) ? { "category_ids": $catVals } : {},
               $boolean($count($locs)) ? { "location_ids": $locs } : {},
               $boolean($count($fids)) ? { "fulfillment_ids": $fids } : {},
-              $boolean($count($filteredTags)) ? { "tags": $filteredTags } : {}
+              $minQty ? { "quantity": { "minimum": $merge([
+                $exists($minQty.count)    ? { "count": $minQty.count } : {},
+                ($minQty.measureValue or $minQty.measureUnit) ? { "measure": $merge([
+                  $minQty.measureValue ? { "value": $minQty.measureValue } : {},
+                  $minQty.measureUnit  ? { "unit":  $minQty.measureUnit }  : {}
+                ]) } : {}
+              ]) } } : {},
+              ($boolean($count($filteredTags)) or $boolean($count($v1FlatTags))) ? { "tags": $append($filteredTags, $v1FlatTags) } : {}
             ])
           )};
 
@@ -286,7 +297,7 @@ mappings:
           $fulfillments := $boolean($count($uniqueFulIds)) ? [$map($uniqueFulIds, function($fid) {(
             $attrs   := $fulOffers[offerAttributes.fulfillmentId = $fid][0].offerAttributes;
             $gps     := $attrs.fulfillmentGps;
-            $hasAddr := $attrs.fulfillmentStreet or $attrs.fulfillmentLocality or $attrs.fulfillmentCity or $attrs.fulfillmentDistrict or $attrs.fulfillmentRegion;
+            $hasAddr := $attrs.fulfillmentVillage or $attrs.fulfillmentStreet or $attrs.fulfillmentLocality or $attrs.fulfillmentCity or $attrs.fulfillmentDistrict or $attrs.fulfillmentRegion;
             $merge([
               { "id": $fid },
               $attrs.fulfillmentType ? { "type": $attrs.fulfillmentType } : {},
@@ -298,6 +309,7 @@ mappings:
                       $attrs.fulfillmentName ? { "descriptor": { "name": $attrs.fulfillmentName } } : {},
                       { "gps": $gps },
                       $hasAddr ? { "address": $merge([
+                        $attrs.fulfillmentVillage    ? { "village":   $attrs.fulfillmentVillage }    : {},
                         $attrs.fulfillmentStreet     ? { "street":    $attrs.fulfillmentStreet }     : {},
                         $attrs.fulfillmentLocality   ? { "locality":  $attrs.fulfillmentLocality }   : {},
                         $attrs.fulfillmentCity       ? { "city":      $attrs.fulfillmentCity }       : {},
@@ -328,7 +340,11 @@ mappings:
           $merge([
             {
               "id": $provider.id,
-              "descriptor": $provider.descriptor,
+              "descriptor": $merge([
+                { "name": $provider.descriptor.name },
+                $provider.descriptor.shortDesc ? { "short_desc": $provider.descriptor.shortDesc } : {},
+                $provider.descriptor.longDesc  ? { "long_desc":  $provider.descriptor.longDesc }  : {}
+              ]),
               "items": $items
             },
             $cat.bppId  ? { "bpp_id":  $cat.bppId }  : {},
@@ -373,7 +389,10 @@ mappings:
           "message": {
             "catalog": $merge([
               { "providers": [$map($catalogs, $mapCatalog)] },
-              $catalogs[0].descriptor.name ? { "descriptor": { "name": $catalogs[0].descriptor.name } } : {}
+              ($catalogs[0].descriptor.name or $catalogs[0].descriptor.code) ? { "descriptor": $merge([
+                $catalogs[0].descriptor.name ? { "name": $catalogs[0].descriptor.name } : {},
+                $catalogs[0].descriptor.code ? { "code": $catalogs[0].descriptor.code } : {}
+              ]) } : {}
             ])
           }
         }
@@ -423,8 +442,22 @@ mappings:
                 $docsText          := $tags[descriptor.code = "documentsListText"].list[0].value;
                 $eligText          := $tags[descriptor.code = "eligibilityText"].list[0].value;
                 $knownTagCodes     := ["target-beneficiary-type", "funding-model", "benefit", "short-benefit", "required-docs", "economic-eligibility", "demographic-eligibility", "social-eligibility", "documentsListText", "eligibilityText"];
-                $unknownTags       := $filter($tags, function($tag) { $not($knownTagCodes[$ = $tag.descriptor.code]) });
-                $unknownTagEntries := $boolean($count($unknownTags)) ? $reduce($map($unknownTags, function($tag) { $map($tag.list, function($item) { $merge([{ "code": $tag.descriptor.code }, $item.value ? { "value": $item.value } : {}, $item.descriptor.code ? { "itemCode": $item.descriptor.code } : {}, $item.descriptor.name ? { "itemName": $item.descriptor.name } : {}]) }) }), $append, []) : [];
+                $structuredTags    := $filter($tags, function($tag) { $exists($tag.descriptor) and $exists($tag.list) });
+                $flatTags          := $filter($tags, function($tag) { $exists($tag.name) and $not($exists($tag.list)) });
+                $unknownStructured := $filter($structuredTags, function($tag) { $not($knownTagCodes[$ = $tag.descriptor.code]) });
+                $unknownTagEntries := $append(
+                  $boolean($count($unknownStructured)) ? $reduce($map($unknownStructured, function($tag) { $map($tag.list, function($item) { $merge([{ "code": $tag.descriptor.code }, $item.value ? { "value": $item.value } : {}, $item.descriptor.code ? { "itemCode": $item.descriptor.code } : {}, $item.descriptor.name ? { "itemName": $item.descriptor.name } : {}]) }) }), $append, []) : [],
+                  $boolean($count($flatTags)) ? [$map($flatTags, function($tag) { $merge([{ "code": $tag.name }, $exists($tag.value) ? { "value": $tag.value } : {}]) })] : []
+                );
+                $minCount    := $item.quantity.minimum.count;
+                $minMeasVal  := $item.quantity.minimum.measure.value;
+                $minMeasUnit := $item.quantity.minimum.measure.unit;
+                $quantityTags := ($minCount or $minMeasVal) ? [$merge([
+                  { "code": "minimumQuantity" },
+                  $exists($minCount)   ? { "count": $minCount }           : {},
+                  $minMeasVal  ? { "measureValue": $string($minMeasVal) } : {},
+                  $minMeasUnit ? { "measureUnit":  $minMeasUnit }         : {}
+                ])] : [];
                 $cat      := $provider.categories[id = $item.category_ids[0]];
 
                 $scalarTags := $filter([
@@ -474,7 +507,7 @@ mappings:
                     $exists($provider.rating) ? [{ "code": "providerRating", "value": $provider.rating }] : []
                   )
                 );
-                $itemTags := $reduce([$scalarTags, $tbtTags, $fmTags, $benTags, $sbenTags, $locationTags, $fulfillmentTags, $docTags, $econTags, $demoTags, $sociTags, $unknownTagEntries, $providerLocationTags], $append);
+                $itemTags := $reduce([$scalarTags, $tbtTags, $fmTags, $benTags, $sbenTags, $locationTags, $fulfillmentTags, $docTags, $econTags, $demoTags, $sociTags, $quantityTags, $unknownTagEntries, $providerLocationTags], $append);
 
                 {
                   "id": $item.id,
@@ -493,11 +526,12 @@ mappings:
 
               $offers := $reduce($provider.items, function($acc, $item) {(
                 $fids       := $item.fulfillment_ids;
-                $hasFids    := $boolean($fids) and $count($fids) > 0;
-                $multiOffer := $hasFids and $count($fids) > 1;
-                $hasRange   := $item.price.minimum_value or $item.price.maximum_value;
-                $pCtx       := $hasRange ? $attrCtx : $priceCtx;
-                $pType      := $hasRange ? "Attributes" : "PriceSpecification";
+                $hasFids      := $boolean($fids) and $count($fids) > 0;
+                $multiOffer   := $hasFids and $count($fids) > 1;
+                $hasRange     := $item.price.minimum_value or $item.price.maximum_value;
+                $pCtx         := $hasRange ? $attrCtx : $priceCtx;
+                $pType        := $hasRange ? "Attributes" : "PriceSpecification";
+                $itemFlatTags := $filter($item.tags, function($tag) { $exists($tag.name) and $not($exists($tag.list)) });
 
                 $makeOffer := function($fid) {(
                   $ful        := $fid ? $provider.fulfillments[id = $fid][0] : null;
@@ -525,11 +559,11 @@ mappings:
                         "status": { "code": "DRAFT" },
                         "considerationAttributes": $merge([
                           { "@context": $pCtx, "@type": $pType, "currency": $item.price.currency },
-                          $item.price.value         ? { "value": $number($item.price.value) }                      : {},
+                          $item.price.value         ? { "value": $hasRange ? $item.price.value : $number($item.price.value) } : {},
                           $item.price.minimum_value ? { "minimumValue": $item.price.minimum_value }                : {},
                           $item.price.maximum_value ? { "maximumValue": $item.price.maximum_value }                : {},
                           $item.price.updated_at    ? { "updatedAt": $item.price.updated_at }                      : {},
-                          $item.price.tags[name = "unit"].value ? { "unit": $item.price.tags[name = "unit"].value } : {}
+                          ($item.price.tags[name = "unit"].value or $item.price.unit) ? { "unit": $item.price.tags[name = "unit"].value ? $item.price.tags[name = "unit"].value : $item.price.unit } : {}
                         ])
                       }]
                     },
@@ -545,6 +579,7 @@ mappings:
                       $fulLoc.descriptor.name ? { "fulfillmentName": $fulLoc.descriptor.name }     : {},
                       $locStop.time           ? { "fulfillmentTime": $locStop.time }               : {},
                       $fulAddr ? ($type($fulAddr) != "string" ? $merge([
+                        $fulAddr.village   ? { "fulfillmentVillage": $fulAddr.village }      : {},
                         $fulAddr.street    ? { "fulfillmentStreet": $fulAddr.street }        : {},
                         $fulAddr.locality  ? { "fulfillmentLocality": $fulAddr.locality }    : {},
                         $fulAddr.city      ? { "fulfillmentCity": $fulAddr.city }            : {},
@@ -552,7 +587,8 @@ mappings:
                         $fulAddr.state     ? { "fulfillmentRegion": $fulAddr.state }         : {},
                         $fulAddr.area_code ? { "fulfillmentPostalCode": $fulAddr.area_code } : {},
                         $fulAddr.country   ? { "fulfillmentCountry": $fulAddr.country }      : {}
-                      ]) : {}) : {}
+                      ]) : {}) : {},
+                      $boolean($count($itemFlatTags)) ? { "itemTags": $map($itemFlatTags, function($tag) { $merge([{ "code": $tag.name }, $exists($tag.value) ? { "value": $tag.value } : {}]) }) } : {}
                     ]) } : {}
                   ])
                 )};
@@ -583,6 +619,7 @@ mappings:
                         $addr.district  ? { "addressLocality": $addr.district } : {},
                         $addr.city      ? { "addressLocality": $addr.city }     : {},
                         $addr.locality  ? { "addressLocality": $addr.locality } : {},
+                        $addr.village   ? { "addressLocality": $addr.village }  : {},
                         $addr.state     ? { "addressRegion": $addr.state }      : {},
                         $addr.area_code ? { "postalCode": $addr.area_code }     : {},
                         { "addressCountry": "IN" }
@@ -596,13 +633,20 @@ mappings:
 
               {
                 "id": $catalog.id ? $catalog.id : "catalog-" & $provider.id,
-                "descriptor": { "name": $catalog.descriptor.name ? $catalog.descriptor.name : $provider.descriptor.name },
+                "descriptor": $merge([
+                  { "name": $catalog.descriptor.name ? $catalog.descriptor.name : $provider.descriptor.name },
+                  $catalog.descriptor.code ? { "code": $catalog.descriptor.code } : {}
+                ]),
                 "bppId": $ctx.bpp_id,
                 "bppUri": $ctx.bpp_uri,
                 "provider": $merge([
                   {
                     "id": $provider.id,
-                    "descriptor": $provider.descriptor
+                    "descriptor": $merge([
+                      { "name": $provider.descriptor.name },
+                      $provider.descriptor.short_desc ? { "shortDesc": $provider.descriptor.short_desc } : {},
+                      $provider.descriptor.long_desc  ? { "longDesc":  $provider.descriptor.long_desc }  : {}
+                    ])
                   },
                   $availableAt ? { "availableAt": $availableAt } : {},
                   ($provider.locations or $provider.rateable or $exists($provider.rating)) ? {
