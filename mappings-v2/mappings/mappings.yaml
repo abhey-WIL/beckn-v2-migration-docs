@@ -149,12 +149,13 @@ mappings:
             $docs     := $rTags[code = "requiredDoc"];
             $econ     := $rTags[code = "economicEligibility"];
             $demo     := $rTags[code = "demographicEligibility"];
+            $soci     := $rTags[code = "socialEligibility"];
             $docsText := $rTags[code = "documentsListText"][0].value;
             $eligText := $rTags[code = "eligibilityText"][0].value;
             $rateable          := $rTags[code = "rateable"][0].value;
             $rating            := $rTags[code = "rating"][0].value;
             $duration          := $rTags[code = "duration"][0].value;
-            $knownRTagCodes    := ["categoryId", "categoryIds", "locationIds", "fulfillmentIds", "targetBeneficiaryType", "fundingModel", "benefitFor", "benefitValue", "shortBenefit", "requiredDoc", "economicEligibility", "demographicEligibility", "documentsListText", "eligibilityText", "rateable", "rating", "duration", "providerLocation", "providerRateable", "providerRating"];
+            $knownRTagCodes    := ["categoryId", "categoryIds", "locationIds", "fulfillmentIds", "targetBeneficiaryType", "fundingModel", "benefitFor", "benefitValue", "shortBenefit", "requiredDoc", "economicEligibility", "demographicEligibility", "socialEligibility", "documentsListText", "eligibilityText", "rateable", "rating", "duration", "providerLocation", "providerRateable", "providerRating"];
             $unknownEntries    := $filter($rTags, function($e) { $not($knownRTagCodes[$ = $e.code]) });
             $unknownCodes      := $distinct($unknownEntries.code);
             $unknownTagsOut    := $boolean($count($unknownCodes)) ? [$map($unknownCodes, function($code) {{ "display": true, "descriptor": { "code": $code, "name": $code }, "list": [$map($unknownEntries[code = $code], function($e) { $merge([$exists($e.itemCode) ? { "descriptor": { "code": $e.itemCode, "name": $e.itemName ? $e.itemName : $e.itemCode } } : {}, $exists($e.value) ? { "value": $e.value } : {}, { "display": true }]) })] }})] : [];
@@ -218,6 +219,17 @@ mappings:
                 "display": true,
                 "descriptor": { "code": "demographic-eligibility", "name": "Demographic eligibility" },
                 "list": [$map($demo, function($e) {(
+                  $val := $e.value ? ($substring($e.value, 0, 2) = ">=" or $substring($e.value, 0, 1) = "=" ? $e.value : "= " & $e.value) : $e.value;
+                  $merge([{
+                    "descriptor": $merge([$e.criterionCode ? { "code": $e.criterionCode } : { "code": "criterion" }, { "name": $e.criterion }]),
+                    "value": $val, "display": true
+                  }])
+                )})]
+              } : null,
+              $boolean($count($soci)) ? {
+                "display": true,
+                "descriptor": { "code": "social-eligibility", "name": "Social eligibility" },
+                "list": [$map($soci, function($e) {(
                   $val := $e.value ? ($substring($e.value, 0, 2) = ">=" or $substring($e.value, 0, 1) = "=" ? $e.value : "= " & $e.value) : $e.value;
                   $merge([{
                     "descriptor": $merge([$e.criterionCode ? { "code": $e.criterionCode } : { "code": "criterion" }, { "name": $e.criterion }]),
@@ -407,9 +419,10 @@ mappings:
                 $docs     := $tags[descriptor.code = "required-docs"].list;
                 $econ     := $tags[descriptor.code = "economic-eligibility"].list;
                 $demo     := $tags[descriptor.code = "demographic-eligibility"].list;
+                $soci     := $tags[descriptor.code = "social-eligibility"].list;
                 $docsText          := $tags[descriptor.code = "documentsListText"].list[0].value;
                 $eligText          := $tags[descriptor.code = "eligibilityText"].list[0].value;
-                $knownTagCodes     := ["target-beneficiary-type", "funding-model", "benefit", "short-benefit", "required-docs", "economic-eligibility", "demographic-eligibility", "documentsListText", "eligibilityText"];
+                $knownTagCodes     := ["target-beneficiary-type", "funding-model", "benefit", "short-benefit", "required-docs", "economic-eligibility", "demographic-eligibility", "social-eligibility", "documentsListText", "eligibilityText"];
                 $unknownTags       := $filter($tags, function($tag) { $not($knownTagCodes[$ = $tag.descriptor.code]) });
                 $unknownTagEntries := $boolean($count($unknownTags)) ? $reduce($map($unknownTags, function($tag) { $map($tag.list, function($item) { $merge([{ "code": $tag.descriptor.code }, $item.value ? { "value": $item.value } : {}, $item.descriptor.code ? { "itemCode": $item.descriptor.code } : {}, $item.descriptor.name ? { "itemName": $item.descriptor.name } : {}]) }) }), $append, []) : [];
                 $cat      := $provider.categories[id = $item.category_ids[0]];
@@ -444,6 +457,10 @@ mappings:
                   $val := $e.value ? $replace($e.value, /^= /, "") : $e.value;
                   $merge([{ "code": "demographicEligibility", "criterion": $e.descriptor.name, "value": $val }, $e.descriptor.code ? { "criterionCode": $e.descriptor.code } : {}])
                 )})] : [];
+                $sociTags := $soci ? [$map($soci, function($e) {(
+                  $val := $e.value ? $replace($e.value, /^= /, "") : $e.value;
+                  $merge([{ "code": "socialEligibility", "criterion": $e.descriptor.name, "value": $val }, $e.descriptor.code ? { "criterionCode": $e.descriptor.code } : {}])
+                )})] : [];
                 $providerLocationTags := $append(
                   $provider.locations ? [$map($provider.locations, function($loc) {{
                     "code": "providerLocation",
@@ -457,7 +474,7 @@ mappings:
                     $exists($provider.rating) ? [{ "code": "providerRating", "value": $provider.rating }] : []
                   )
                 );
-                $itemTags := $reduce([$scalarTags, $tbtTags, $fmTags, $benTags, $sbenTags, $locationTags, $fulfillmentTags, $docTags, $econTags, $demoTags, $unknownTagEntries, $providerLocationTags], $append);
+                $itemTags := $reduce([$scalarTags, $tbtTags, $fmTags, $benTags, $sbenTags, $locationTags, $fulfillmentTags, $docTags, $econTags, $demoTags, $sociTags, $unknownTagEntries, $providerLocationTags], $append);
 
                 {
                   "id": $item.id,
