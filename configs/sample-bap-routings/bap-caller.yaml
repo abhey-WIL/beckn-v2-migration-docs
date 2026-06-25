@@ -8,6 +8,6 @@ routingRules:
   - version: "2.0.0"
     targetType: "url"
     target:
-      url: "https://discovr.onix.fynd.engineering/beckn"
+      url: "https://discovr-beckn.krishiupai.com/beckn"
     endpoints:
       - discover
